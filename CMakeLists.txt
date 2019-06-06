@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Surface mesh library	
 set(SURFACEMESH_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/surface_mesh")
@@ -62,6 +63,10 @@ add_executable(CompareDistance
 	CompareDistance.cpp
 )
 
+# Helper function to download external dependencies
+include(ParaHeatDownloadExternal)
+
+
 # GLFW viewer
 set(WITH_VIEWER ON CACHE BOOL "With Viewer")
 if(WITH_VIEWER)
@@ -71,10 +76,15 @@ if(WITH_VIEWER)
 	)
 	
 	if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libigl/include")
-		message(FATAL_ERROR "Cannot find libigl in the external folder.")
+		message(STATUS "Cannot find libigl in the external folder. Downloading.")
+		paraheat_download_libigl()
 	endif()
 	
 	set(GLAD_PATH "${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
+	if(NOT EXISTS ${GLAD_PATH})
+		message(STATUS "Cannot find glad in the external folder. Downloading.")
+		paraheat_download_glad()
+	endif()
 	add_library(glad 
 		"${GLAD_PATH}/src/glad.c"
 	)
@@ -83,8 +93,10 @@ if(WITH_VIEWER)
 	  target_link_libraries(glad PUBLIC ${CMAKE_DL_LIBS})
 	endif()
 	
-	set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-	find_package(GLFW REQUIRED)
+	if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/glfw/")
+		message(STATUS "Cannot find glfw in the external folder. Downloading.")
+		paraheat_download_glfw()
+	endif()
 	target_include_directories(ViewScalarField SYSTEM PUBLIC "${GLFW_INCLUDE_DIR}")
 	target_include_directories(ViewScalarField SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/libigl/include")
 	target_include_directories(ViewScalarField SYSTEM PUBLIC "${GLAD_PATH}/include")
@@ -94,24 +106,16 @@ endif()
 
 
 # Detect Eigen3 in the external folder
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/eigen/Eigen/Dense)
-	message("Found user-provided Eigen.")
-	set(EIGEN3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/eigen")
-	target_include_directories(GeodDistSolver SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-	target_include_directories(CompareDistance SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-	if(WITH_VIEWER)
-		target_include_directories(ViewScalarField SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-	endif()
-else()
-	find_package(Eigen3 REQUIRED)
-	if(EIGEN3_FOUND)
-		message("Found system-installed Eigen")
-		target_include_directories(GeodDistSolver SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-		target_include_directories(CompareDistance SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-		if(WITH_VIEWER)
-			target_include_directories(ViewScalarField SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
-		endif()
-	endif()
+set(EIGEN3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/eigen")
+if(NOT EXISTS ${EIGEN3_INCLUDE_DIR})
+		message(STATUS "Cannot find Eigen in the external folder. Downloading.")
+		paraheat_download_eigen()
+endif()
+
+target_include_directories(GeodDistSolver SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
+target_include_directories(CompareDistance SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
+if(WITH_VIEWER)
+	target_include_directories(ViewScalarField SYSTEM PUBLIC "${EIGEN3_INCLUDE_DIR}")
 endif()
 
 
@@ -121,6 +125,8 @@ target_link_libraries(GeodDistSolver SurfaceMesh)
 # Detect OpenMP environment
 set(OPENMP ON CACHE BOOL "OpenMP")
 if(OPENMP)
+	# For this to work on MacOS, libomp must be installed (brew install libomp) and then the cmake command must be changed to
+	# cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="clang" -DCMAKE_CXX_COMPILER="clang++" -DOpenMP_C_FLAGS=-fopenmp=lomp -DOpenMP_CXX_FLAGS=-fopenmp=lomp -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp /usr/local/lib/libomp.dylib -I/usr/local/include" -DOpenMP_CXX_LIB_NAMES="libomp" -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp /usr/local/lib/libomp.dylib -I/usr/local/include" ..
   FIND_PACKAGE(OpenMP QUIET)
   if(OPENMP_FOUND)
       message("OpenMP found. OpenMP activated in release.")
